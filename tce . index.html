@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Despesas por Fornecedor – TCESP</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    header { background-color: #003366; color: white; padding: 20px; text-align: center; margin-bottom: 20px; border-radius: 8px; }
+    h1 { margin: 0; font-size: 28px; }
+    h2 { font-size: 20px; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #f4f4f4; }
+    input, select, button { padding: 5px; margin-right: 10px; }
+    #mensagem { margin-top: 10px; font-weight: bold; color: #990000; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Altus Licitações</h1>
+    <p>Consulta de Despesas Públicas dos Órgãos e Entidades do Estado de São Paulo – Dados extraídos do Sistema Audesp VI do TCE-SP.</p>
+  </header>
+
+  <h2>Filtrar por Município, Ano, Mês, Fornecedor, Evento e CNPJ</h2>
+
+  <label for="municipio">Município:</label>
+  <select id="municipio">
+    <option value="">Carregando municípios...</option>
+  </select>
+
+  <label for="ano">Ano:</label>
+  <input type="number" id="ano" placeholder="Ex: 2019" min="2014" max="2099" />
+
+  <label for="mes">Mês:</label>
+  <select id="mes">
+    <option value="0">Todos</option>
+    <option value="1">Janeiro</option>
+    <option value="2">Fevereiro</option>
+    <option value="3">Março</option>
+    <option value="4">Abril</option>
+    <option value="5">Maio</option>
+    <option value="6">Junho</option>
+    <option value="7">Julho</option>
+    <option value="8">Agosto</option>
+    <option value="9">Setembro</option>
+    <option value="10">Outubro</option>
+    <option value="11">Novembro</option>
+    <option value="12">Dezembro</option>
+  </select>
+
+  <label for="fornecedor">Fornecedor:</label>
+  <input type="text" id="fornecedor" placeholder="Ex: banco do brasil" />
+
+  <label for="cnpj">CNPJ/CPF:</label>
+  <input type="text" id="cnpj" placeholder="Ex: 00.000.000/0001-00" maxlength="18" />
+
+  <label for="evento">Evento:</label>
+  <select id="evento">
+    <option value="">Todos</option>
+  </select>
+
+  <button onclick="buscarDespesas()">Buscar</button>
+  <button onclick="buscarDespesas(true)">Ver Tudo</button>
+
+  <div id="mensagem"></div>
+
+  <table id="tabela">
+    <thead>
+      <tr>
+        <th>Órgão</th>
+        <th>Evento</th>
+        <th>Fornecedor</th>
+        <th>ID Fornecedor</th>
+        <th>Data</th>
+        <th>Empenho</th>
+        <th>Valor (R$)</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    let dadosTotais = [];
+
+    window.onload = async () => {
+      const selectMunicipio = document.getElementById('municipio');
+      try {
+        const response = await fetch('https://transparencia.tce.sp.gov.br/api/json/municipios');
+        const lista = await response.json();
+
+        selectMunicipio.innerHTML = '<option value="">Selecione o município</option>';
+
+        lista.forEach(m => {
+          const option = document.createElement('option');
+          option.value = normalizarMunicipio(m.municipio_extenso);
+          option.textContent = m.municipio_extenso;
+          selectMunicipio.appendChild(option);
+        });
+      } catch (erro) {
+        selectMunicipio.innerHTML = '<option value="">Erro ao carregar municípios</option>';
+        console.error('Erro ao carregar municípios:', erro);
+      }
+    };
+
+    function normalizarMunicipio(texto) {
+      return texto
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/\s+/g, '-');
+    }
+
+    async function buscarDespesas(verTudo = false) {
+      const municipio = document.getElementById('municipio').value;
+      const ano = parseInt(document.getElementById('ano').value);
+      const mesSelecionado = parseInt(document.getElementById('mes').value);
+      const tabela = document.getElementById('tabela').querySelector('tbody');
+      const mensagem = document.getElementById('mensagem');
+      const selectEvento = document.getElementById('evento');
+      mensagem.textContent = '';
+      selectEvento.innerHTML = '<option value="">Todos</option>';
+
+      if (!municipio || !ano || ano < 2014 || ano > 2099) {
+        alert("Preencha corretamente o município e um ano entre 2014 e 2099.");
+        return;
+      }
+
+      let dados = [];
+      const meses = mesSelecionado === 0 ? [...Array(12).keys()].map(m => m + 1) : [mesSelecionado];
+
+      tabela.innerHTML = '<tr><td colspan="7">Carregando...</td></tr>';
+
+      try {
+        for (const mes of meses) {
+          const url = `https://transparencia.tce.sp.gov.br/api/json/despesas/${municipio}/${ano}/${mes}`;
+          const response = await fetch(url);
+          if (response.ok) {
+            const parcial = await response.json();
+            dados = dados.concat(parcial);
+          }
+        }
+
+        if (!Array.isArray(dados) || !dados.length) {
+          tabela.innerHTML = '';
+          mensagem.textContent = "Sem resultados — o mês ou município podem não conter dados.";
+          return;
+        }
+
+        dadosTotais = dados;
+
+        const eventosUnicos = [...new Set(dados.map(d => d.evento))].sort();
+        eventosUnicos.forEach(ev => {
+          const opt = document.createElement("option");
+          opt.value = ev;
+          opt.textContent = ev;
+          selectEvento.appendChild(opt);
+        });
+
+        filtrarResultados(verTudo);
+
+      } catch (erro) {
+        console.error('Erro:', erro);
+        tabela.innerHTML = '';
+        mensagem.textContent = "Erro ao acessar os dados da API.";
+      }
+    }
+
+    function filtrarResultados(verTudo = false) {
+      const filtroFornecedor = document.getElementById('fornecedor').value.toLowerCase().trim();
+      const filtroCNPJ = document.getElementById('cnpj').value.replace(/\D/g, '');
+      const eventoSelecionado = document.getElementById('evento').value;
+      const tabela = document.getElementById('tabela').querySelector('tbody');
+      const mensagem = document.getElementById('mensagem');
+
+      const filtrados = dadosTotais.filter(d => {
+        const fornecedorOK =
+          verTudo ||
+          (filtroFornecedor && d.nm_fornecedor.toLowerCase().includes(filtroFornecedor)) ||
+          (filtroCNPJ && d.id_fornecedor.replace(/\D/g, '').includes(filtroCNPJ));
+        const eventoOK = !eventoSelecionado || d.evento.toLowerCase() === eventoSelecionado.toLowerCase();
+        return fornecedorOK && eventoOK;
+      });
+
+      if (!filtrados.length) {
+        tabela.innerHTML = '';
+        mensagem.textContent = "Nenhum resultado com os filtros aplicados.";
+        return;
+      }
+
+      mensagem.textContent = '';
+      tabela.innerHTML = filtrados.map(d => `
+        <tr>
+          <td>${d.orgao}</td>
+          <td>${d.evento}</td>
+          <td>${d.nm_fornecedor}</td>
+          <td>${d.id_fornecedor}</td>
+          <td>${d.dt_emissao_despesa}</td>
+          <td>${d.nr_empenho}</td>
+          <td>${parseFloat(d.vl_despesa.replace('.', '').replace(',', '.')).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('evento').addEventListener('change', () => filtrarResultados());
+
+    document.getElementById('cnpj').addEventListener('input', function (e) {
+      let v = e.target.value.replace(/\D/g, '');
+      if (v.length <= 11) {
+        v = v.replace(/(\d{3})(\d)/, '$1.$2');
+        v = v.replace(/(\d{3})(\d)/, '$1.$2');
+        v = v.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+      } else {
+        v = v.replace(/^(\d{2})(\d)/, '$1.$2');
+        v = v.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+        v = v.replace(/\.(\d{3})(\d)/, '.$1/$2');
+        v = v.replace(/(\d{4})(\d)/, '$1-$2');
+      }
+      e.target.value = v;
+    });
+  </script>
+
+</body>
+</html>
