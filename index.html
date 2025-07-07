@@ -13,6 +13,19 @@
     th { background-color: #f4f4f4; }
     input, select, button { padding: 5px; margin-right: 10px; }
     #mensagem { margin-top: 10px; font-weight: bold; color: #990000; }
+    dialog {
+      border: none;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      padding: 20px;
+    }
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.4);
+    }
+    #infoMessage {
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
   </style>
 </head>
 <body>
@@ -21,6 +34,11 @@
     <h1>Altus Licitações</h1>
     <p>Consulta de Despesas Públicas dos Órgãos e Entidades do Estado de São Paulo – Dados extraídos do Sistema Audesp VI do TCE-SP.</p>
   </header>
+
+  <dialog id="infoDialog">
+    <div id="infoMessage">⚠️ Tem pagamentos em atraso? Entre em contato com a <strong>Altus</strong>, podemos te ajudar!</div>
+    <button onclick="fecharDialogEContinuar()">Continuar consulta</button>
+  </dialog>
 
   <h2>Filtrar por Município, Ano, Mês, Fornecedor, Evento e CNPJ</h2>
 
@@ -60,8 +78,8 @@
     <option value="">Todos</option>
   </select>
 
-  <button onclick="buscarDespesas()">Buscar</button>
-  <button onclick="buscarDespesas(true)">Ver Tudo</button>
+  <button onclick="mostrarDialog(false)">Buscar</button>
+  <button onclick="mostrarDialog(true)">Ver Tudo</button>
 
   <div id="mensagem"></div>
 
@@ -82,6 +100,7 @@
 
   <script>
     let dadosTotais = [];
+    let proximaBuscaVerTudo = false;
 
     window.onload = async () => {
       const selectMunicipio = document.getElementById('municipio');
@@ -104,11 +123,17 @@
     };
 
     function normalizarMunicipio(texto) {
-      return texto
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/\s+/g, '-');
+      return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, '-');
+    }
+
+    function mostrarDialog(verTudo) {
+      proximaBuscaVerTudo = verTudo;
+      document.getElementById('infoDialog').showModal();
+    }
+
+    function fecharDialogEContinuar() {
+      document.getElementById('infoDialog').close();
+      buscarDespesas(proximaBuscaVerTudo);
     }
 
     async function buscarDespesas(verTudo = false) {
